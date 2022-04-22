@@ -116,11 +116,12 @@ class Localization(BaseLocalization):
 
     # Plot the odometry and prior belief distribution in the plotter
     def plot_prediction_step_data(self):
-        current_odom = self.robot.get_pose()
+        # Uncomment the following lines to get the robot odometry and plot it in the plotter
+        # current_odom = self.robot.get_pose()
 
         # Plot data
-        self.cmdr.plot_odom(current_odom[0],
-                            current_odom[1])
+        # self.cmdr.plot_odom(current_odom[0],
+        #                     current_odom[1])
         belief_bar_marginal = np.sum(self.bel_bar, axis=2)
         self.cmdr.plot_distribution(belief_bar_marginal)
 
