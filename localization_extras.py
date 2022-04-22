@@ -3,9 +3,10 @@ import numpy as np
 from localization import BaseLocalization
 import time
 from copy import deepcopy
-from utils import setup_logging
+from utils import get_max, setup_logging
 
-LOG = setup_logging("full_localization.log")
+
+LOG = setup_logging("localization_extras.log")
 
 
 class Localization(BaseLocalization):
@@ -48,12 +49,12 @@ class Localization(BaseLocalization):
         Returns:
             prob [float]: Probability p(x'|x, u)
         """
-        true_delta_rot_1, true_delta_trans, true_delta_rot_2 = self.compute_control(cur_pose,
-                                                                                    prev_pose)
+        exp_delta_rot_1, exp_delta_trans, exp_delta_rot_2 = self.compute_control(cur_pose,
+                                                                                 prev_pose)
 
-        prob = (self.gaussian(self.mapper.normalize_angle(u[0]-true_delta_rot_1), 0, self.odom_rot_sigma)
-                * self.gaussian(u[1], true_delta_trans, self.odom_trans_sigma)
-                * self.gaussian(self.mapper.normalize_angle(u[2]-true_delta_rot_2), 0, self.odom_rot_sigma))
+        prob = (self.gaussian(self.mapper.normalize_angle(exp_delta_rot_1-u[0]), 0, self.odom_rot_sigma)
+                * self.gaussian(exp_delta_trans, u[1], self.odom_trans_sigma)
+                * self.gaussian(self.mapper.normalize_angle(exp_delta_rot_2-u[2]), 0, self.odom_rot_sigma))
 
         return prob
 
@@ -73,8 +74,8 @@ class Localization(BaseLocalization):
         u = self.compute_control(cur_odom, prev_odom)
 
         self.bel_bar = np.zeros((self.mapper.MAX_CELLS_X,
-                                self.mapper.MAX_CELLS_Y,
-                                self.mapper.MAX_CELLS_A))
+                                 self.mapper.MAX_CELLS_Y,
+                                 self.mapper.MAX_CELLS_A))
 
         for prev_x in range(0, self.mapper.MAX_CELLS_X):
             for prev_y in range(0, self.mapper.MAX_CELLS_Y):
@@ -83,13 +84,13 @@ class Localization(BaseLocalization):
                         for cur_x in range(0, self.mapper.MAX_CELLS_X):
                             for cur_y in range(0, self.mapper.MAX_CELLS_Y):
                                 for cur_a in range(0, self.mapper.MAX_CELLS_A):
-                                    self.bel_bar[cur_x, cur_y, cur_a] = self.bel_bar[cur_x, cur_y, cur_a] + (odom_motion_model(self.mapper.from_map(cur_x,
-                                                                                                                                                    cur_y,
-                                                                                                                                                    cur_a),
-                                                                                                                               self.mapper.from_map(prev_x,
-                                                                                                                                                    prev_y,
-                                                                                                                                                    prev_a),
-                                                                                                                               u) * self.bel[prev_x, prev_y, prev_a])
+                                    self.bel_bar[cur_x, cur_y, cur_a] = self.bel_bar[cur_x, cur_y, cur_a] + (self.odom_motion_model(self.mapper.from_map(cur_x,
+                                                                                                                                                         cur_y,
+                                                                                                                                                         cur_a),
+                                                                                                                                    self.mapper.from_map(prev_x,
+                                                                                                                                                         prev_y,
+                                                                                                                                                         prev_a),
+                                                                                                                                    u) * self.bel[prev_x, prev_y, prev_a])
 
         self.bel_bar = self.bel_bar / np.sum(self.bel_bar)
         LOG.info(" | Prediction Time: {:.3f} secs".format(
@@ -111,22 +112,22 @@ class Localization(BaseLocalization):
             self.bel = self.bel / np.sum(self.bel)
 
         LOG.info("     | Update Time: {:.3f} secs".format(
-            time.time() - start_time)
+            time.time() - start_time))
 
     # Plot the odometry and prior belief distribution in the plotter
     def plot_prediction_step_data(self):
-        current_odom=self.robot.get_pose()
+        current_odom = self.robot.get_pose()
 
         # Plot data
         self.cmdr.plot_odom(current_odom[0],
                             current_odom[1])
-        belief_bar_marginal=np.sum(self.bel_bar, axis=2)
+        belief_bar_marginal = np.sum(self.bel_bar, axis=2)
         self.cmdr.plot_distribution(belief_bar_marginal)
 
     # Plot belief in the plotter
     def plot_update_step_data(self, plot_data=True):
-        argmax_bel=get_max(self.bel)
-        current_belief=self.mapper.from_map(*argmax_bel[0])
+        argmax_bel = get_max(self.bel)
+        current_belief = self.mapper.from_map(*argmax_bel[0])
 
         # Print prob as a string to prevent rounding
         LOG.info("Bel index     : {} with prob = {}".format(argmax_bel[0],
